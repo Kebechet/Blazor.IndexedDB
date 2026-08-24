@@ -1,0 +1,136 @@
+@inject IIndexedDbStorage _storage
+
+<div class="demo-stack">
+    @if (!Hint.IsNullOrEmpty())
+    {
+        <p class="demo-hint">@Hint</p>
+    }
+
+    @if (Mode == PlaygroundMode.KeyValue || Mode == PlaygroundMode.Durability)
+    {
+        <div class="demo-form">
+            <label>Key <input @bind="_key" /></label>
+            <label>Value <input @bind="_value" /></label>
+        </div>
+    }
+
+    <div class="demo-actions">
+        @switch (Mode)
+        {
+            case PlaygroundMode.KeyValue:
+                <button @onclick="() => Write(StorageDurability.Relaxed)">Write</button>
+                <button @onclick="Read">Read</button>
+                <button @onclick="Exists">Exists</button>
+                <button @onclick="Remove">Remove</button>
+                <button @onclick="GetKeys">GetKeys</button>
+                break;
+            case PlaygroundMode.Collection:
+                <button @onclick="ReplaceCollection">Replace with 3 exercises</button>
+                <button @onclick="ReadCollection">Read collection</button>
+                <button @onclick="ClearStore">Clear store</button>
+                break;
+            case PlaygroundMode.Driver:
+                <button @onclick="Probe">GetDriver</button>
+                break;
+            case PlaygroundMode.Durability:
+                <button @onclick="() => Write(StorageDurability.Strict)">Write (strict)</button>
+                <button @onclick="() => Write(StorageDurability.Relaxed)">Write (relaxed)</button>
+                <button @onclick="Read">Read</button>
+                break;
+        }
+    </div>
+
+    <StorageState Json="@_stateJson" />
+</div>
+
+@code {
+    private const string _store = "settings";
+    private const string _collectionStore = "exercises";
+
+    private static readonly JsonSerializerOptions _prettyJson = new() { WriteIndented = true };
+
+    [Parameter]
+    public string? Hint { get; set; }
+
+    [Parameter]
+    public PlaygroundMode Mode { get; set; } = PlaygroundMode.KeyValue;
+
+    private string _key = "theme";
+    private string _value = "dark";
+    private string _stateJson = "{}";
+
+    private async Task Write(StorageDurability durability)
+    {
+        await _storage.Write(_store, _key, _value, durability);
+        await ShowState("Write", new { key = _key, value = _value, durability = durability.ToString() });
+    }
+
+    private async Task Read()
+    {
+        var value = await _storage.Read<string>(_store, _key);
+        await ShowState("Read", new { key = _key, value });
+    }
+
+    private async Task Exists()
+    {
+        var doesExist = await _storage.Exists(_store, _key);
+        await ShowState("Exists", new { key = _key, exists = doesExist });
+    }
+
+    private async Task Remove()
+    {
+        await _storage.Remove(_store, _key);
+        await ShowState("Remove", new { key = _key });
+    }
+
+    private async Task GetKeys()
+    {
+        var keys = await _storage.GetKeys(_store);
+        await ShowState("GetKeys", new { keys });
+    }
+
+    private async Task ReplaceCollection()
+    {
+        var exercises = new List<Exercise>
+        {
+            new("Squat", 5),
+            new("Bench press", 5),
+            new("Deadlift", 1),
+        };
+        await _storage.ReplaceCollection(_collectionStore, exercises);
+        await ShowState("ReplaceCollection", new { count = exercises.Count });
+    }
+
+    private async Task ReadCollection()
+    {
+        var exercises = await _storage.ReadCollection<Exercise>(_collectionStore);
+        await ShowState("ReadCollection", new { exercises });
+    }
+
+    private async Task ClearStore()
+    {
+        await _storage.Clear(_collectionStore);
+        await ShowState("Clear", new { store = _collectionStore });
+    }
+
+    private async Task Probe()
+    {
+        await ShowState("GetDriver", new { });
+    }
+
+    private async Task ShowState(string operation, object result)
+    {
+        var driver = await _storage.GetDriver();
+        _stateJson = JsonSerializer.Serialize(new { operation, driver = driver.ToString(), result }, _prettyJson);
+    }
+
+    public enum PlaygroundMode
+    {
+        KeyValue,
+        Collection,
+        Driver,
+        Durability,
+    }
+
+    private sealed record Exercise(string Name, int Reps);
+}

@@ -1,0 +1,12 @@
+{
+  "name": "blazor-indexeddb-js-tests",
+  "private": true,
+  "type": "module",
+  "description": "Node test suite for the package's IndexedDB module: the real IndexedDB path over fake-indexeddb, and the in-memory fallback with no indexedDB at all.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5"
+  }
+}

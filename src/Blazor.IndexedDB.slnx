@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Blazor.IndexedDB\Blazor.IndexedDB.csproj" />
+  <Project Path="..\tests\Blazor.IndexedDB.Tests\Blazor.IndexedDB.Tests.csproj" />
+</Solution>

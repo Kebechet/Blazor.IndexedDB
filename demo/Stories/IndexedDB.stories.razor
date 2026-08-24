@@ -1,0 +1,53 @@
+@attribute [Stories("Storage/IndexedDB")]
+
+<Stories TComponent="StoragePlayground">
+
+    <Story Name="Key/value">
+        <Description>
+            <code>Write</code>, <code>Read</code>, <code>Exists</code>, <code>Remove</code> and <code>GetKeys</code>
+            on one named store. Values are serialized with the registered <code>JsonSerializerOptions</code> and
+            cross the interop as bytes. Reload the page - the entries are still there.
+        </Description>
+        <Template>
+            <StoragePlayground Mode="StoragePlayground.PlaygroundMode.KeyValue"
+                               Hint="Write, Read, Exists, Remove and GetKeys on the 'settings' store. Type a key and a value, press Write, then Read - the state panel shows the deserialized value and the store's keys. Reload the page and Read again: IndexedDB persists across launches." />
+        </Template>
+    </Story>
+
+    <Story Name="Collection">
+        <Description>
+            A store also holds one collection, independent of its key/value entries.
+            <code>ReplaceCollection</code> swaps it in a single transaction so a reader never observes a
+            half-written list; <code>ReadCollection</code> returns an empty list when none was written.
+        </Description>
+        <Template>
+            <StoragePlayground Mode="StoragePlayground.PlaygroundMode.Collection"
+                               Hint="ReplaceCollection writes a whole list in one transaction; ReadCollection reads it back. Press Replace to store three exercises, then Read - the panel lists them. Clear wipes the collection together with the store's entries; Read then returns an empty list, never null and never an exception." />
+        </Template>
+    </Story>
+
+    <Story Name="Driver probe">
+        <Description>
+            <code>GetDriver</code> reports what this session's storage runs on: <code>IndexedDb</code>, or
+            <code>Memory</code> when the database could not be opened. The decision is made once, on the
+            first operation, and the same API keeps working in both modes.
+        </Description>
+        <Template>
+            <StoragePlayground Mode="StoragePlayground.PlaygroundMode.Driver"
+                               Hint="GetDriver answers IndexedDb in a normal browser session. To see the fallback, open this story in a private window of a browser that blocks IndexedDB (Firefox with history disabled), or block storage for the site: the driver reads Memory, a warning is logged once, and every button in the other stories still works for the session." />
+        </Template>
+    </Story>
+
+    <Story Name="Durability">
+        <Description>
+            <code>StorageDurability.Strict</code> asks the browser to flush to disk before the transaction
+            completes - for values that must survive a crash right after the write, such as tokens.
+            <code>Relaxed</code> (the default) lets the browser decide and is the faster choice for caches.
+        </Description>
+        <Template>
+            <StoragePlayground Mode="StoragePlayground.PlaygroundMode.Durability"
+                               Hint="Write with StorageDurability.Strict flushes before the transaction completes. Press Write (strict) and Write (relaxed); both store the value - the difference is the durability hint handed to IndexedDB, visible in the state panel as the option the last write used." />
+        </Template>
+    </Story>
+
+</Stories>
