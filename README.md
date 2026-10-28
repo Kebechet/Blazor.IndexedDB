@@ -97,6 +97,7 @@ No script tag: the JS module is imported on demand from the package's static web
 
 - A store holds key/value entries **and**, independently, one collection. `Clear` wipes both; `ReplaceCollection` touches only the collection.
 - The driver is decided once per session, on the first operation. A database that stops opening mid-session also switches the session to memory - the same rule, applied late.
+- An operation whose connection the browser closes under it runs once more on a new connection. WebKit does this when it deletes the site's data while a request is open ("Database deleted by request of the user"); the second attempt sees the database as it is after the deletion, so a read of deleted data is a miss rather than an error. Any other error inside an operation is reported as it is.
 - An existing database with the configured name is reused as it is; the package's own object store is added to it with a one-version bump, so it can share a database with other code.
 - Every failure is logged through `ILogger<IndexedDbStorage>`: errors per failed operation, one warning when a session falls back to memory. Route those to your error reporting to learn how often real users run degraded.
 

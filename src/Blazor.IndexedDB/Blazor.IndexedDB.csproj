@@ -21,8 +21,8 @@
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
     <PackageIcon>icon.png</PackageIcon>
     <PackageTags>blazor;indexeddb;storage;key-value;cache;offline;maui;blazor-hybrid;webview;persistence</PackageTags>
-    <Version>1.0.0</Version>
-    <PackageReleaseNotes>Initial release. One IndexedDB database, any number of named stores; Read/Write/Remove/Exists/GetKeys per key plus ReadCollection/ReplaceCollection per store, the replace running as a single transaction. Values travel as UTF-8 JSON bytes serialized with caller-supplied JsonSerializerOptions, so a source-generated context keeps trimming and AOT safe. When the browser exposes no working IndexedDB (seen in WKWebView after background launches) the same API keeps working over an in-memory store for the session, and GetDriver reports which mode the session runs in. No operation throws on a storage failure.</PackageReleaseNotes>
+    <Version>1.0.1</Version>
+    <PackageReleaseNotes>Fixes an operation failing when the browser closes its connection under it. WebKit deletes a site's data with requests still open and fails them with "Database deleted by request of the user"; the operation was logged as an error, a read answered with a miss that guessed at what the database held and a write dropped. It now runs once more on a new connection, which sees the database as it is after the deletion: a read of deleted data is a miss, a write lands in the new database, and data that survived is read back. A second close in a row, and every other error inside an operation, is reported as before.</PackageReleaseNotes>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>

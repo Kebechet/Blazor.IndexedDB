@@ -1,7 +1,8 @@
 // The IndexedDB path, run over fake-indexeddb - a spec-level in-memory implementation of the
 // real API, so transactions, key ranges and version upgrades behave as in a browser.
 import 'fake-indexeddb/auto';
-import { test } from 'node:test';
+import { forceCloseDatabase } from 'fake-indexeddb';
+import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStorage, DRIVER_INDEXED_DB, DRIVER_MEMORY } from '../../src/Blazor.IndexedDB/wwwroot/indexeddb-storage.js';
 
@@ -24,6 +25,57 @@ function openRaw(databaseName, version, onUpgrade) {
         request.onsuccess = (event) => resolve(event.target.result);
         request.onerror = (event) => reject(event.target.error);
     });
+}
+
+function userDeleteError() {
+    return new DOMException('Database deleted by request of the user', 'UnknownError');
+}
+
+/* A transaction whose requests, and the transaction itself, fail with the given error. */
+function failedTransaction(error) {
+    const failedRequest = () => {
+        const request = {};
+        setTimeout(() => request.onerror?.({ target: { error } }));
+        return request;
+    };
+    const transaction = {
+        objectStore: () => ({ get: failedRequest, getKey: failedRequest, getAllKeys: failedRequest, put: failedRequest, delete: failedRequest }),
+    };
+    setTimeout(() => transaction.onabort?.({ target: { error } }));
+    return transaction;
+}
+
+const realTransaction = IDBDatabase.prototype.transaction;
+
+afterEach(() => {
+    IDBDatabase.prototype.transaction = realTransaction;
+});
+
+/* Fails the next `count` transactions started on an open connection; a closed one still refuses
+   to start any, as in a browser. With isForcedClose the failure is the one WebKit produces when
+   it deletes an origin's website data under an open connection (UniqueIDBDatabase::immediateClose):
+   the connection is force-closed, so it refuses new transactions, and its in-flight requests fail
+   with "Database deleted by request of the user". isDatabaseDeleted also deletes the database, as
+   a real website-data removal does. */
+function failNextTransactions({ count, error, isForcedClose, isDatabaseDeleted }) {
+    let remainingCount = count;
+    IDBDatabase.prototype.transaction = function (...args) {
+        realTransaction.apply(this, args);
+        remainingCount -= 1;
+        if (remainingCount === 0) {
+            IDBDatabase.prototype.transaction = realTransaction;
+        }
+
+        if (isForcedClose) {
+            forceCloseDatabase(this);
+        }
+
+        if (isDatabaseDeleted) {
+            indexedDB.deleteDatabase(this.name);
+        }
+
+        return failedTransaction(error);
+    };
 }
 
 test('probe reports the IndexedDB driver when the database opens', async () => {
@@ -151,4 +203,53 @@ test('a database that stops opening mid-session degrades to memory and stays the
     }
 
     assert.equal(await storage.probe(), DRIVER_MEMORY, 'the driver choice is sticky for the session');
+});
+
+test('a read whose data the browser deletes under it answers from the database as it is afterwards', async () => {
+    const storage = createStorage(uniqueDatabaseName());
+    await storage.set('auth', 'access', bytes('a'), 'relaxed');
+    await storage.set('auth', 'refresh', bytes('r'), 'relaxed');
+
+    failNextTransactions({ count: 1, error: userDeleteError(), isForcedClose: true, isDatabaseDeleted: true });
+
+    assert.deepEqual(await storage.keys('auth'), []);
+    assert.equal(await storage.probe(), DRIVER_INDEXED_DB, 'a deleted database is not an unavailable one');
+});
+
+test('a read whose connection the browser closes without deleting the data still gets the data', async () => {
+    const storage = createStorage(uniqueDatabaseName());
+    await storage.set('auth', 'access', bytes('a'), 'relaxed');
+    await storage.set('auth', 'refresh', bytes('r'), 'relaxed');
+
+    failNextTransactions({ count: 1, error: userDeleteError(), isForcedClose: true, isDatabaseDeleted: false });
+
+    assert.deepEqual((await storage.keys('auth')).sort(), ['access', 'refresh']);
+});
+
+test('a write whose connection the browser closes lands on a new connection', async () => {
+    const storage = createStorage(uniqueDatabaseName());
+    await storage.probe();
+
+    failNextTransactions({ count: 1, error: userDeleteError(), isForcedClose: true, isDatabaseDeleted: true });
+    await storage.set('settings', 'theme', bytes('dark'), 'strict');
+
+    assert.deepEqual(await storage.get('settings', 'theme'), bytes('dark'));
+});
+
+test('a connection the browser closes again on the second attempt fails the operation', async () => {
+    const storage = createStorage(uniqueDatabaseName());
+    await storage.probe();
+
+    failNextTransactions({ count: 2, error: userDeleteError(), isForcedClose: true, isDatabaseDeleted: false });
+
+    await assert.rejects(storage.keys('auth'), { name: 'UnknownError', message: 'Database deleted by request of the user' });
+});
+
+test('an operation error on a connection that is still open reaches the caller without a second attempt', async () => {
+    const storage = createStorage(uniqueDatabaseName());
+    await storage.set('auth', 'access', bytes('a'), 'relaxed');
+
+    failNextTransactions({ count: 1, error: new DOMException('The data provided does not meet requirements.', 'DataError'), isForcedClose: false, isDatabaseDeleted: false });
+
+    await assert.rejects(storage.keys('auth'), { name: 'DataError' });
 });

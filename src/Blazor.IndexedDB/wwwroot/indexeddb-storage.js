@@ -114,10 +114,26 @@ export function createStorage(databaseName) {
         return driver;
     }
 
+    /* True once the browser has closed the connection itself: a connection whose close is
+       pending refuses new transactions with InvalidStateError. This module's own close() only
+       runs after the operation has settled. */
+    function isClosedByBrowser(db) {
+        try {
+            db.transaction(STORE, 'readonly');
+            return false;
+        } catch (error) {
+            return error.name === 'InvalidStateError';
+        }
+    }
+
     /* Runs the IndexedDB operation against a fresh connection, or the in-memory equivalent once
        degraded. Only a failure to open the database switches drivers; an error inside an
-       operation still reaches the caller. */
-    async function run(indexedDbOperation, memoryOperation) {
+       operation still reaches the caller - unless the browser closed the connection under it.
+       WebKit does that when it deletes the origin's website data while a request is open, failing
+       the request with "Database deleted by request of the user"; the data the operation was
+       about is then gone or out of reach of that connection, so the operation runs once more on
+       a new one, which sees the database as it is after the deletion. */
+    async function run(indexedDbOperation, memoryOperation, canRetryOnClose = true) {
         if ((await probe()) === DRIVER_MEMORY) {
             return memoryOperation();
         }
@@ -132,9 +148,17 @@ export function createStorage(databaseName) {
 
         try {
             return await indexedDbOperation(db);
+        } catch (error) {
+            if (!canRetryOnClose || !isClosedByBrowser(db)) {
+                throw error;
+            }
+
+            console.warn(`indexeddb-storage: the browser closed the connection to '${databaseName}' under an operation, running it again on a new one.`, error);
         } finally {
             db.close();
         }
+
+        return run(indexedDbOperation, memoryOperation, false);
     }
 
     function memoryCompositeKeys(storeName) {
